@@ -18,7 +18,7 @@ void textFile(FILE *readPtr);
 void updateRecord(FILE *fPtr);
 void newRecord(FILE *fPtr);
 void deleteRecord(FILE *fPtr);
-
+void searchRecord(FILE *fPtr);
 int main(int argc, char *argv[])
 {
     FILE *cfPtr;         // credit.dat file pointer
@@ -52,6 +52,9 @@ int main(int argc, char *argv[])
         case 4:
             deleteRecord(cfPtr);
             break;
+        case 6:
+            searchRecord(cfPtr);
+            break;
         // display if user does not select valid choice
         default:
             puts("Incorrect choice");
@@ -61,7 +64,32 @@ int main(int argc, char *argv[])
 
     fclose(cfPtr); // fclose closes the file
 } // end main
+//search
+void searchRecord(FILE *fPtr)
+{
+    unsigned int account;
+    struct clientData client = {0, "", "", 0.0};
 
+    printf("Enter account number to search: ");
+    scanf("%u", &account);
+
+    fseek(fPtr, (account - 1) * sizeof(struct clientData), SEEK_SET);
+    fread(&client, sizeof(struct clientData), 1, fPtr);
+
+    if (client.acctNum == 0)
+    {
+        printf("Account not found.\n");
+    }
+    else
+    {
+        printf("Account Found:\n");
+        printf("%-6d%-16s%-11s%10.2f\n",
+               client.acctNum,
+               client.lastName,
+               client.firstName,
+               client.balance);
+    }
+}
 // create formatted text file for printing
 void textFile(FILE *readPtr)
 {
@@ -131,7 +159,7 @@ void updateRecord(FILE *fPtr)
 
         // move file pointer to correct record in file
         // move back by 1 record length
-        fseek(fPtr, -sizeof(struct clientData), SEEK_CUR);
+        fseek(fPtr, -(long)sizeof(struct clientData), SEEK_CUR);
         // write updated record over old record in file
         fwrite(&client, sizeof(struct clientData), 1, fPtr);
     } // end else
