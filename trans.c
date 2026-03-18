@@ -154,7 +154,10 @@ void updateRecord(FILE *fPtr)
         printf("%s", "Enter charge ( + ) or payment ( - ): ");
         scanf("%lf", &transaction);
         client.balance += transaction; // update record balance
-
+        if (client.balance < 1000)
+       {
+            printf("Warning Low Balance!\n");
+       }
         printf("%-6d%-16s%-11s%10.2f\n", client.acctNum, client.lastName, client.firstName, client.balance);
 
         // move file pointer to correct record in file
@@ -239,7 +242,7 @@ unsigned int enterChoice(void)
                  "2 - update an account\n"
                  "3 - add a new account\n"
                  "4 - delete an account\n"
-                 "5 - end program\n? "
+                 "5 - end program\n "
                  "6 - search an account\n? ");
 
     scanf("%u", &menuChoice); // receive choice from user
