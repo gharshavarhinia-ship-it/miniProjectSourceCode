@@ -3,6 +3,7 @@
 // be placed in the file, and deletes data previously in the file.
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 // clientData structure definition
 struct clientData
 {
@@ -19,6 +20,10 @@ void updateRecord(FILE *fPtr);
 void newRecord(FILE *fPtr);
 void deleteRecord(FILE *fPtr);
 void searchRecord(FILE *fPtr);
+void listRecords(FILE *fPtr);
+void summaryStatistics(FILE *fPtr);
+void searchByName(FILE *fPtr);
+void editAccount(FILE *fPtr);
 int main(int argc, char *argv[])
 {
     FILE *cfPtr;         // credit.dat file pointer
@@ -32,7 +37,7 @@ int main(int argc, char *argv[])
     }
 
     // enable user to specify action
-    while ((choice = enterChoice()) != 5)
+    while ((choice = enterChoice()) != 11)
     {
         switch (choice)
         {
@@ -54,6 +59,18 @@ int main(int argc, char *argv[])
             break;
         case 6:
             searchRecord(cfPtr);
+            break;
+        case 7:
+            listRecords(cfPtr);
+            break;
+        case 8:
+            summaryStatistics(cfPtr);
+            break;
+        case 9:
+            searchByName(cfPtr);
+            break;
+        case 5:
+            editAccount(cfPtr);
             break;
         // display if user does not select valid choice
         default:
@@ -90,6 +107,148 @@ void searchRecord(FILE *fPtr)
                client.balance);
     }
 }
+// list all records to console
+void listRecords(FILE *fPtr)
+{
+    struct clientData client = {0, "", "", 0.0};
+    int result;
+
+    rewind(fPtr); // sets pointer to beginning of file
+    printf("%-6s%-16s%-11s%10s\n", "Acct", "Last Name", "First Name", "Balance");
+
+    // read all records from file and display
+    while (!feof(fPtr))
+    {
+        result = fread(&client, sizeof(struct clientData), 1, fPtr);
+
+        // display single record if it exists
+        if (result != 0 && client.acctNum != 0)
+        {
+            printf("%-6d%-16s%-11s%10.2f\n", client.acctNum, client.lastName, client.firstName,
+                   client.balance);
+        } // end if
+    } // end while
+} // end function listRecords
+// show summary statistics
+void summaryStatistics(FILE *fPtr)
+{
+    struct clientData client = {0, "", "", 0.0};
+    int result;
+    int count = 0;
+    double totalBalance = 0.0;
+    double minBalance = 0.0;
+    double maxBalance = 0.0;
+
+    rewind(fPtr); // sets pointer to beginning of file
+
+    // read all records from file
+    while (!feof(fPtr))
+    {
+        result = fread(&client, sizeof(struct clientData), 1, fPtr);
+
+        // process single record if it exists
+        if (result != 0 && client.acctNum != 0)
+        {
+            count++;
+            totalBalance += client.balance;
+            if (count == 1)
+            {
+                minBalance = maxBalance = client.balance;
+            }
+            else
+            {
+                if (client.balance < minBalance)
+                    minBalance = client.balance;
+                if (client.balance > maxBalance)
+                    maxBalance = client.balance;
+            }
+        } // end if
+    } // end while
+
+    printf("\nSummary Statistics:\n");
+    printf("Total Accounts: %d\n", count);
+    if (count > 0)
+    {
+        printf("Total Balance: %.2f\n", totalBalance);
+        printf("Average Balance: %.2f\n", totalBalance / count);
+        printf("Minimum Balance: %.2f\n", minBalance);
+        printf("Maximum Balance: %.2f\n", maxBalance);
+    }
+} // end function summaryStatistics
+// search by name
+void searchByName(FILE *fPtr)
+{
+    struct clientData client = {0, "", "", 0.0};
+    int result;
+    char searchName[15];
+    int found = 0;
+
+    printf("Enter last name to search: ");
+    scanf("%14s", searchName);
+
+    rewind(fPtr); // sets pointer to beginning of file
+    printf("\nAccounts with last name '%s':\n", searchName);
+    printf("%-6s%-16s%-11s%10s\n", "Acct", "Last Name", "First Name", "Balance");
+
+    // read all records from file
+    while (!feof(fPtr))
+    {
+        result = fread(&client, sizeof(struct clientData), 1, fPtr);
+
+        // check single record if it exists
+        if (result != 0 && client.acctNum != 0)
+        {
+            if (strcmp(client.lastName, searchName) == 0)
+            {
+                printf("%-6d%-16s%-11s%10.2f\n", client.acctNum, client.lastName, client.firstName,
+                       client.balance);
+                found = 1;
+            }
+        } // end if
+    } // end while
+
+    if (!found)
+    {
+        printf("No accounts found with last name '%s'.\n", searchName);
+    }
+} // end function searchByName
+// edit account details
+void editAccount(FILE *fPtr)
+{
+    unsigned int account; // account number
+    struct clientData client = {0, "", "", 0.0};
+
+    // obtain number of account to edit
+    printf("%s", "Enter account to edit ( 1 - 100 ): ");
+    scanf("%d", &account);
+
+    // move file pointer to correct record in file
+    fseek(fPtr, (account - 1) * sizeof(struct clientData), SEEK_SET);
+    // read record from file
+    fread(&client, sizeof(struct clientData), 1, fPtr);
+    // display error if account does not exist
+    if (client.acctNum == 0)
+    {
+        printf("Account #%d has no information.\n", account);
+    }
+    else
+    { // edit record
+        printf("Current details:\n");
+        printf("%-6d%-16s%-11s%10.2f\n\n", client.acctNum, client.lastName, client.firstName, client.balance);
+
+        // request new last name and first name
+        printf("%s", "Enter new lastname, firstname\n? ");
+        scanf("%14s%9s", client.lastName, client.firstName);
+
+        printf("Updated details:\n");
+        printf("%-6d%-16s%-11s%10.2f\n", client.acctNum, client.lastName, client.firstName, client.balance);
+
+        // move file pointer to correct record in file
+        fseek(fPtr, (account - 1) * sizeof(struct clientData), SEEK_SET);
+        // write updated record over old record in file
+        fwrite(&client, sizeof(struct clientData), 1, fPtr);
+    }
+} // end function editAccount
 // create formatted text file for printing
 void textFile(FILE *readPtr)
 {
@@ -155,9 +314,9 @@ void updateRecord(FILE *fPtr)
         scanf("%lf", &transaction);
         client.balance += transaction; // update record balance
         if (client.balance < 1000)
-       {
+        {
             printf("Warning Low Balance!\n");
-       }
+        }
         printf("%-6d%-16s%-11s%10.2f\n", client.acctNum, client.lastName, client.firstName, client.balance);
 
         // move file pointer to correct record in file
@@ -242,8 +401,12 @@ unsigned int enterChoice(void)
                  "2 - update an account\n"
                  "3 - add a new account\n"
                  "4 - delete an account\n"
-                 "5 - end program\n "
-                 "6 - search an account\n? ");
+                 "5 - edit account details\n"
+                 "6 - search an account\n"
+                 "7 - list all accounts\n"
+                 "8 - show summary statistics\n"
+                 "9 - search by name\n"
+                 "11 - end program\n? ");
 
     scanf("%u", &menuChoice); // receive choice from user
     return menuChoice;
