@@ -8,10 +8,22 @@
 struct clientData
 {
     unsigned int acctNum; // account number
+    unsigned int slot;    // record slot number (1-based)
     char lastName[15];    // account last name
     char firstName[10];   // account first name
     double balance;       // account balance
 }; // end structure clientData
+
+// old format used before slot field was added
+struct clientDataOld
+{
+    unsigned int acctNum; // account number
+    char lastName[15];    // account last name
+    char firstName[10];   // account first name
+    double balance;       // account balance
+};
+
+#define MAX_RECORDS 100
 
 // prototypes
 unsigned int enterChoice(void);
@@ -24,13 +36,117 @@ void listRecords(FILE *fPtr);
 void summaryStatistics(FILE *fPtr);
 void searchByName(FILE *fPtr);
 void editAccount(FILE *fPtr);
+
+FILE *openCreditFile(const char *filename);
+void migrateFileIfNeeded(FILE **fPtr, const char *filename);
+
+// open the credit file, create if missing, and ensure it uses the current record format
+FILE *openCreditFile(const char *filename)
+{
+    FILE *fPtr = fopen(filename, "rb+");
+    if (fPtr == NULL)
+    {
+        fPtr = fopen(filename, "wb+");
+        if (fPtr == NULL)
+            return NULL;
+    }
+
+    migrateFileIfNeeded(&fPtr, filename);
+    return fPtr;
+}
+
+// Ensure the file uses the current struct format (with slot field).
+// If the file is in the old format (no slot), rewrite it to the new format.
+void migrateFileIfNeeded(FILE **fPtr, const char *filename)
+{
+    long oldRecSize = sizeof(struct clientDataOld);
+    long newRecSize = sizeof(struct clientData);
+
+    // determine file size
+    fseek(*fPtr, 0, SEEK_END);
+    long fileSize = ftell(*fPtr);
+
+    // if file is empty, create an empty file with correct format
+    if (fileSize == 0)
+    {
+        rewind(*fPtr);
+        struct clientData blank = {0, 0, "", "", 0.0};
+        for (int i = 0; i < MAX_RECORDS; i++)
+        {
+            blank.slot = i + 1;
+            fwrite(&blank, newRecSize, 1, *fPtr);
+        }
+        fflush(*fPtr);
+        rewind(*fPtr);
+        return;
+    }
+
+    // if already in new format, ensure slots are correct and return
+    if (fileSize == newRecSize * MAX_RECORDS)
+    {
+        rewind(*fPtr);
+        for (int i = 0; i < MAX_RECORDS; i++)
+        {
+            struct clientData client;
+            if (fread(&client, newRecSize, 1, *fPtr) != 1)
+                break;
+            if (client.acctNum != 0 && client.slot != (unsigned int)(i + 1))
+            {
+                client.slot = i + 1;
+                fseek(*fPtr, -newRecSize, SEEK_CUR);
+                fwrite(&client, newRecSize, 1, *fPtr);
+                fflush(*fPtr);
+                fseek(*fPtr, (i + 1) * newRecSize, SEEK_SET);
+            }
+        }
+        rewind(*fPtr);
+        return;
+    }
+
+    // otherwise assume old format (or truncated file) and migrate
+    {
+        FILE *tmp = fopen("credit.tmp", "wb");
+        if (tmp == NULL)
+            return;
+
+        rewind(*fPtr);
+        for (int i = 0; i < MAX_RECORDS; i++)
+        {
+            struct clientData client = {0, 0, "", "", 0.0};
+            if (i < (fileSize / oldRecSize))
+            {
+                struct clientDataOld old;
+                if (fread(&old, oldRecSize, 1, *fPtr) == 1)
+                {
+                    client.acctNum = old.acctNum;
+                    client.balance = old.balance;
+                    strncpy(client.lastName, old.lastName, sizeof(client.lastName));
+                    client.lastName[sizeof(client.lastName) - 1] = '\0';
+                    strncpy(client.firstName, old.firstName, sizeof(client.firstName));
+                    client.firstName[sizeof(client.firstName) - 1] = '\0';
+                }
+            }
+
+            client.slot = i + 1;
+            fwrite(&client, newRecSize, 1, tmp);
+        }
+
+        fclose(*fPtr);
+        fclose(tmp);
+        remove(filename);
+        rename("credit.tmp", filename);
+        *fPtr = fopen(filename, "rb+");
+    }
+}
+
 int main(int argc, char *argv[])
 {
     FILE *cfPtr;         // credit.dat file pointer
     unsigned int choice; // user's choice
 
-    // fopen opens the file; exits if file cannot be opened
-    if ((cfPtr = fopen("credit.dat", "rb+")) == NULL)
+    // open and migrate file format if needed
+    cfPtr = openCreditFile("credit.dat");
+    if (cfPtr == NULL)
     {
         printf("%s: File could not be opened.\n", argv[0]);
         exit(-1);
@@ -85,7 +201,7 @@ int main(int argc, char *argv[])
 void searchRecord(FILE *fPtr)
 {
     unsigned int account;
-    struct clientData client = {0, "", "", 0.0};
+    struct clientData client = {0, 0, "", "", 0.0};
 
     printf("Enter account number to search: ");
     scanf("%u", &account);
@@ -100,8 +216,10 @@ void searchRecord(FILE *fPtr)
     else
     {
         printf("Account Found:\n");
-        printf("%-6d%-16s%-11s%10.2f\n",
+        printf("%-8s%-6s%-16s%-11s%10s\n", "Acct", "Slot", "Last Name", "First Name", "Balance");
+        printf("%-8u%-6u%-16s%-11s%10.2f\n",
                client.acctNum,
+               client.slot,
                client.lastName,
                client.firstName,
                client.balance);
@@ -110,11 +228,11 @@ void searchRecord(FILE *fPtr)
 // list all records to console
 void listRecords(FILE *fPtr)
 {
-    struct clientData client = {0, "", "", 0.0};
+    struct clientData client = {0, 0, "", "", 0.0};
     int result;
 
     rewind(fPtr); // sets pointer to beginning of file
-    printf("%-6s%-16s%-11s%10s\n", "Acct", "Last Name", "First Name", "Balance");
+    printf("%-8s%-6s%-16s%-11s%10s\n", "Acct", "Slot", "Last Name", "First Name", "Balance");
 
     // read all records from file and display
     while (!feof(fPtr))
@@ -124,7 +242,7 @@ void listRecords(FILE *fPtr)
         // display single record if it exists
         if (result != 0 && client.acctNum != 0)
         {
-            printf("%-6d%-16s%-11s%10.2f\n", client.acctNum, client.lastName, client.firstName,
+            printf("%-8u%-6u%-16s%-11s%10.2f\n", client.acctNum, client.slot, client.lastName, client.firstName,
                    client.balance);
         } // end if
     } // end while
@@ -132,7 +250,7 @@ void listRecords(FILE *fPtr)
 // show summary statistics
 void summaryStatistics(FILE *fPtr)
 {
-    struct clientData client = {0, "", "", 0.0};
+    struct clientData client = {0, 0, "", "", 0.0};
     int result;
     int count = 0;
     double totalBalance = 0.0;
@@ -178,7 +296,7 @@ void summaryStatistics(FILE *fPtr)
 // search by name
 void searchByName(FILE *fPtr)
 {
-    struct clientData client = {0, "", "", 0.0};
+    struct clientData client = {0, 0, "", "", 0.0};
     int result;
     char searchName[15];
     int found = 0;
@@ -216,7 +334,7 @@ void searchByName(FILE *fPtr)
 void editAccount(FILE *fPtr)
 {
     unsigned int account; // account number
-    struct clientData client = {0, "", "", 0.0};
+    struct clientData client = {0, 0, "", "", 0.0};
 
     // obtain number of account to edit
     printf("%s", "Enter account to edit ( 1 - 100 ): ");
@@ -232,16 +350,19 @@ void editAccount(FILE *fPtr)
         printf("Account #%d has no information.\n", account);
     }
     else
-    { // edit record
+    {                          // edit record
+        client.slot = account; // ensure slot is correct
+
         printf("Current details:\n");
-        printf("%-6d%-16s%-11s%10.2f\n\n", client.acctNum, client.lastName, client.firstName, client.balance);
+        printf("%-8s%-6s%-16s%-11s%10s\n", "Acct", "Slot", "Last Name", "First Name", "Balance");
+        printf("%-8u%-6u%-16s%-11s%10.2f\n\n", client.acctNum, client.slot, client.lastName, client.firstName, client.balance);
 
         // request new last name and first name
         printf("%s", "Enter new lastname, firstname\n? ");
         scanf("%14s%9s", client.lastName, client.firstName);
 
         printf("Updated details:\n");
-        printf("%-6d%-16s%-11s%10.2f\n", client.acctNum, client.lastName, client.firstName, client.balance);
+        printf("%-8u%-6u%-16s%-11s%10.2f\n", client.acctNum, client.slot, client.lastName, client.firstName, client.balance);
 
         // move file pointer to correct record in file
         fseek(fPtr, (account - 1) * sizeof(struct clientData), SEEK_SET);
@@ -255,7 +376,7 @@ void textFile(FILE *readPtr)
     FILE *writePtr; // accounts.txt file pointer
     int result;     // used to test whether fread read any bytes
     // create clientData with default information
-    struct clientData client = {0, "", "", 0.0};
+    struct clientData client = {0, 0, "", "", 0.0};
 
     // fopen opens the file; exits if file cannot be opened
     if ((writePtr = fopen("accounts.txt", "w")) == NULL)
@@ -265,7 +386,7 @@ void textFile(FILE *readPtr)
     else
     {
         rewind(readPtr); // sets pointer to beginning of file
-        fprintf(writePtr, "%-6s%-16s%-11s%10s\n", "Acct", "Last Name", "First Name", "Balance");
+        fprintf(writePtr, "%-8s%-6s%-16s%-11s%10s\n", "Acct", "Slot", "Last Name", "First Name", "Balance");
 
         // copy all records from random-access file into text file
         while (!feof(readPtr))
@@ -275,7 +396,7 @@ void textFile(FILE *readPtr)
             // write single record to text file
             if (result != 0 && client.acctNum != 0)
             {
-                fprintf(writePtr, "%-6d%-16s%-11s%10.2f\n", client.acctNum, client.lastName, client.firstName,
+                fprintf(writePtr, "%-8u%-6u%-16s%-11s%10.2f\n", client.acctNum, client.slot, client.lastName, client.firstName,
                         client.balance);
             } // end if
         } // end while
@@ -290,7 +411,7 @@ void updateRecord(FILE *fPtr)
     unsigned int account; // account number
     double transaction;   // transaction amount
     // create clientData with no information
-    struct clientData client = {0, "", "", 0.0};
+    struct clientData client = {0, 0, "", "", 0.0};
 
     // obtain number of account to update
     printf("%s", "Enter account to update ( 1 - 100 ): ");
@@ -306,8 +427,10 @@ void updateRecord(FILE *fPtr)
         printf("Account #%d has no information.\n", account);
     }
     else
-    { // update record
-        printf("%-6d%-16s%-11s%10.2f\n\n", client.acctNum, client.lastName, client.firstName, client.balance);
+    {                          // update record
+        client.slot = account; // ensure slot is correct
+        printf("%-8s%-6s%-16s%-11s%10s\n", "Acct", "Slot", "Last Name", "First Name", "Balance");
+        printf("%-8u%-6u%-16s%-11s%10.2f\n\n", client.acctNum, client.slot, client.lastName, client.firstName, client.balance);
 
         // request transaction amount from user
         printf("%s", "Enter charge ( + ) or payment ( - ): ");
@@ -317,7 +440,7 @@ void updateRecord(FILE *fPtr)
         {
             printf("Warning Low Balance!\n");
         }
-        printf("%-6d%-16s%-11s%10.2f\n", client.acctNum, client.lastName, client.firstName, client.balance);
+        printf("%-8u%-6u%-16s%-11s%10.2f\n", client.acctNum, client.slot, client.lastName, client.firstName, client.balance);
 
         // move file pointer to correct record in file
         // move back by 1 record length
@@ -330,9 +453,9 @@ void updateRecord(FILE *fPtr)
 // delete an existing record
 void deleteRecord(FILE *fPtr)
 {
-    struct clientData client;                       // stores record read from file
-    struct clientData blankClient = {0, "", "", 0}; // blank client
-    unsigned int accountNum;                        // account number
+    struct clientData client;                            // stores record read from file
+    struct clientData blankClient = {0, 0, "", "", 0.0}; // blank client
+    unsigned int accountNum;                             // account number
 
     // obtain number of account to delete
     printf("%s", "Enter account number to delete ( 1 - 100 ): ");
@@ -349,6 +472,7 @@ void deleteRecord(FILE *fPtr)
     } // end if
     else
     { // delete record
+        blankClient.slot = accountNum;
         // move file pointer to correct record in file
         fseek(fPtr, (accountNum - 1) * sizeof(struct clientData), SEEK_SET);
         // replace existing record with blank record
@@ -360,7 +484,7 @@ void deleteRecord(FILE *fPtr)
 void newRecord(FILE *fPtr)
 {
     // create clientData with default information
-    struct clientData client = {0, "", "", 0.0};
+    struct clientData client = {0, 0, "", "", 0.0};
     unsigned int accountNum; // account number
 
     // obtain number of account to create
@@ -383,6 +507,7 @@ void newRecord(FILE *fPtr)
         scanf("%14s%9s%lf", client.lastName, client.firstName, &client.balance);
 
         client.acctNum = accountNum;
+        client.slot = accountNum;
         // move file pointer to correct record in file
         fseek(fPtr, (client.acctNum - 1) * sizeof(struct clientData), SEEK_SET);
         // insert record in file
