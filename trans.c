@@ -37,6 +37,7 @@ void summaryStatistics(FILE *fPtr);
 void searchByName(FILE *fPtr);
 void editAccount(FILE *fPtr);
 void sortRecords(FILE *fPtr);
+void transferMoney(FILE *fPtr);
 FILE *openCreditFile(const char *filename);
 void migrateFileIfNeeded(FILE **fPtr, const char *filename);
 
@@ -54,7 +55,67 @@ FILE *openCreditFile(const char *filename)
     migrateFileIfNeeded(&fPtr, filename);
     return fPtr;
 }
+void transferMoney(FILE *fPtr)
+{
+    unsigned int fromAcc, toAcc;
+    double amount;
 
+    struct clientData fromClient = {0, 0, "", "", 0.0};
+    struct clientData toClient = {0, 0, "", "", 0.0};
+
+    printf("Enter FROM account number: ");
+    scanf("%u", &fromAcc);
+
+    printf("Enter TO account number: ");
+    scanf("%u", &toAcc);
+
+    printf("Enter amount to transfer: ");
+    scanf("%lf", &amount);
+
+    // read sender
+    fseek(fPtr, (fromAcc - 1) * sizeof(struct clientData), SEEK_SET);
+    fread(&fromClient, sizeof(struct clientData), 1, fPtr);
+
+    // read receiver
+    fseek(fPtr, (toAcc - 1) * sizeof(struct clientData), SEEK_SET);
+    fread(&toClient, sizeof(struct clientData), 1, fPtr);
+
+    // validation
+    if (fromClient.acctNum == 0 || toClient.acctNum == 0)
+    {
+        printf("Invalid account number(s).\n");
+        return;
+    }
+
+    if (amount <= 0)
+    {
+        printf("Invalid amount.\n");
+        return;
+    }
+
+    if (fromClient.balance < amount)
+    {
+        printf("Insufficient balance in account %u.\n", fromAcc);
+        return;
+    }
+
+    // perform transfer
+    fromClient.balance -= amount;
+    toClient.balance += amount;
+
+    // write sender back
+    fseek(fPtr, (fromAcc - 1) * sizeof(struct clientData), SEEK_SET);
+    fwrite(&fromClient, sizeof(struct clientData), 1, fPtr);
+
+    // write receiver back
+    fseek(fPtr, (toAcc - 1) * sizeof(struct clientData), SEEK_SET);
+    fwrite(&toClient, sizeof(struct clientData), 1, fPtr);
+
+    printf("\nTransfer Successful!\n");
+
+    printf("From Account (%u) New Balance: %.2f\n", fromAcc, fromClient.balance);
+    printf("To Account (%u) New Balance: %.2f\n", toAcc, toClient.balance);
+}
 // Ensure the file uses the current struct format (with slot field).
 // If the file is in the old format (no slot), rewrite it to the new format.
 void migrateFileIfNeeded(FILE **fPtr, const char *filename)
@@ -153,7 +214,7 @@ int main(int argc, char *argv[])
     }
 
     // enable user to specify action
-    while ((choice = enterChoice()) != 11)
+    while ((choice = enterChoice()) != 12)
     {
         switch (choice)
         {
@@ -190,6 +251,9 @@ int main(int argc, char *argv[])
             break;
         case 10:
             sortRecords(cfPtr);
+            break;
+        case 11:
+            transferMoney(cfPtr);
             break;
         // display if user does not select valid choice
         default:
@@ -572,18 +636,18 @@ unsigned int enterChoice(void)
     unsigned int menuChoice; // variable to store user's choice
     // display available options
     printf("%s", "\nEnter your choice\n"
-                 "1 - store a formatted text file of accounts called\n"
-                 "    \"accounts.txt\" for printing\n"
-                 "2 - update an account\n"
-                 "3 - add a new account\n"
-                 "4 - delete an account\n"
-                 "5 - edit account details\n"
-                 "6 - search an account\n"
-                 "7 - list all accounts\n"
-                 "8 - show summary statistics\n"
-                 "9 - search by name\n"
+                 "1 -  store a formatted text file (accounts.txt)\n"
+                 "2 -  update an account\n"
+                 "3 -  add a new account\n"
+                 "4 -  delete an account\n"
+                 "5 -  edit account details\n"
+                 "6 -  search an account\n"
+                 "7 -  list all accounts\n"
+                 "8 -  show summary statistics\n"
+                 "9 -  search by name\n"
                  "10 - sort accounts by balance\n"
-                 "11 - end program\n? ");
+                 "11 - transfer money between accounts\n"
+                 "12 - end program\n? ");
 
     scanf("%u", &menuChoice); // receive choice from user
     return menuChoice;
