@@ -36,7 +36,7 @@ void listRecords(FILE *fPtr);
 void summaryStatistics(FILE *fPtr);
 void searchByName(FILE *fPtr);
 void editAccount(FILE *fPtr);
-
+void sortRecords(FILE *fPtr);
 FILE *openCreditFile(const char *filename);
 void migrateFileIfNeeded(FILE **fPtr, const char *filename);
 
@@ -188,6 +188,9 @@ int main(int argc, char *argv[])
         case 5:
             editAccount(cfPtr);
             break;
+        case 10:
+            sortRecords(cfPtr);
+            break;
         // display if user does not select valid choice
         default:
             puts("Incorrect choice");
@@ -223,6 +226,54 @@ void searchRecord(FILE *fPtr)
                client.lastName,
                client.firstName,
                client.balance);
+    }
+}
+void sortRecords(FILE *fPtr)
+{
+    struct clientData clients[MAX_RECORDS];
+    int count = 0;
+
+    rewind(fPtr);
+
+    // read all valid records
+    while (fread(&clients[count], sizeof(struct clientData), 1, fPtr) == 1)
+    {
+        if (clients[count].acctNum != 0)
+            count++;
+    }
+
+    if (count == 0)
+    {
+        printf("No records to display.\n");
+        return;
+    }
+
+    // sort by balance (high → low)
+    for (int i = 0; i < count - 1; i++)
+    {
+        for (int j = 0; j < count - i - 1; j++)
+        {
+            if (clients[j].balance < clients[j + 1].balance)
+            {
+                struct clientData temp = clients[j];
+                clients[j] = clients[j + 1];
+                clients[j + 1] = temp;
+            }
+        }
+    }
+
+    // display sorted records
+    printf("\nAccounts sorted by balance (High → Low):\n");
+    printf("%-8s%-6s%-16s%-11s%10s\n", "Acct", "Slot", "Last Name", "First Name", "Balance");
+
+    for (int i = 0; i < count; i++)
+    {
+        printf("%-8u%-6u%-16s%-11s%10.2f\n",
+               clients[i].acctNum,
+               clients[i].slot,
+               clients[i].lastName,
+               clients[i].firstName,
+               clients[i].balance);
     }
 }
 // list all records to console
@@ -531,6 +582,7 @@ unsigned int enterChoice(void)
                  "7 - list all accounts\n"
                  "8 - show summary statistics\n"
                  "9 - search by name\n"
+                 "10 - sort accounts by balance\n"
                  "11 - end program\n? ");
 
     scanf("%u", &menuChoice); // receive choice from user
