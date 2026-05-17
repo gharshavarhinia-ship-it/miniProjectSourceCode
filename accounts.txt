@@ -1,8 +1,9 @@
 Acct    Slot  Last Name       First Name    Balance
 1       1     John            Joe           1222.00
-147563  2                                    399.03
+147563  2                                   1389.03
 545947493                                      0.00
 10861772634                                    400.00
 31834723846     k@                               0.00
-23      23    varhini         harsha        6200.00
+23      23    harsha          varhini       5610.00
 13421772856    �@                             0.00
+79      79    ram             kumar         7000.00
